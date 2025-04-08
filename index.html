@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <title>NYC Parks Opening Hours</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
+    <link href="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet" />
+    <style>
+        body { margin: 0; padding: 0; font-family: 'Karla', sans-serif; }
+        #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+        #console { position: absolute; width: 250px; margin: 10px; padding: 10px 20px; background-color: white; z-index: 1; }
+        .session { margin-bottom: 20px; }
+        h2 { font-size: 14px; margin: 8px 0; }
+    </style>
+</head>
+
+<body>
+<div id="map"></div>
+<div id="console">
+    <h1>NYC Parks Opening Hours</h1>
+    <p class="description">Opening hours for parks in New York City vary depending on the day of the week and the specific park regulations. Some parks open early in the morning and close late at night, while others may have shorter access hours. This map helps visualize the accessibility of parks at different times.</p>
+    <p class="description">Use the slider to select the hour and day to view which parks are open in New York City.</p>
+    <div class="session" id="sliderbar">
+        <h2>Hour: <label id="active-hour">12PM</label></h2>
+        <input id="slider" class="row" type="range" min="0" max="23" step="1" value="12" />
+    </div>
+    <div class="session">
+        <h2>Day of the week</h2>
+        <div class="row" id="filters">
+            <select id="day-select">
+                <option value="Monday">Monday</option>
+                <option value="Tuesday">Tuesday</option>
+                <option value="Wednesday">Wednesday</option>
+                <option value="Thursday">Thursday</option>
+                <option value="Friday">Friday</option>
+                <option value="Saturday">Saturday</option>
+                <option value="Sunday">Sunday</option>
+            </select>
+        </div>
+    </div>
+</div>
+
+<script>
+mapboxgl.accessToken = 'pk.eyJ1IjoieXViaW4wMCIsImEiOiJjbTgydXF4MmwwZDVpMmxyNHB2eGkxOG45In0.118bRKW5lzqbICAwvl4qaA';
+const map = new mapboxgl.Map({
+    container: 'map',
+    style: 'mapbox://styles/mapbox/light-v11',
+    center: [-74.0059, 40.7128],
+    zoom: 12
+});
+
+let selectedDay = 'Monday';
+let selectedHour = 12;
+
+map.on('load', () => {
+    map.addSource('parks', {
+        type: 'geojson',
+        data: './data/combine.geojson' // your uploaded data
+    });
+
+    map.addLayer({
+        id: 'parks-open',
+        type: 'fill',
+        source: 'parks',
+        paint: {
+            'fill-color': '#2DC4B2',
+        'fill-opacity': 0.6
+        },
+        filter: ['all']
+    });
+    const popup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false });
+
+    map.on('mousemove', 'parks-open', (e) => {
+        map.getCanvas().style.cursor = 'pointer';
+        const parkName = e.features[0].properties.eapply || 'Unnamed Park';
+        
+        popup.setLngLat(e.lngLat).setHTML(`<strong>${parkName}</strong>`).addTo(map);
+    });
+
+    map.on('mouseleave', 'parks-open', () => {
+        map.getCanvas().style.cursor = '';
+        popup.remove();
+    });
+
+
+    updateFilter();
+
+    document.getElementById('slider').addEventListener('input', (event) => {
+        selectedHour = parseInt(event.target.value);
+        updateFilter();
+        const ampm = selectedHour >= 12 ? 'PM' : 'AM';
+        const hour12 = selectedHour % 12 ? selectedHour % 12 : 12;
+        document.getElementById('active-hour').innerText = hour12 + ampm;
+    });
+
+    document.getElementById('day-select').addEventListener('change', (event) => {
+        selectedDay = event.target.value;
+        updateFilter();
+    });
+});
+
+function updateFilter() {
+    map.setFilter('parks-open', [
+        'all',
+        ['==', ['get', 'day'], selectedDay],
+        [
+            'case',
+            ['<=', ['to-number', ['get', 'open']], ['to-number', ['get', 'close']]],
+            // 如果 open <= close，当天开关，正常比较
+            ['all',
+                ['<=', ['to-number', ['get', 'open']], selectedHour],
+                ['>=', ['to-number', ['get', 'close']], selectedHour]
+            ],
+            // 如果 open > close，跨夜开关，要用 OR
+            ['any',
+                ['>=', selectedHour, ['to-number', ['get', 'open']]],
+                ['<=', selectedHour, ['to-number', ['get', 'close']]]
+            ]
+        ]
+    ]);
+}
+</script>
+
+</body>
+
+</html>
